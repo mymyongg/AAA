@@ -3,11 +3,11 @@ import numpy as np
 # Parameters
 m = 2090.0
 I_psi = 2500.0
+l = 2.875
 l_f = 1.0056
-l_r = 2.875 - l_f
+l_r = l - l_f
 c_f = 154371.0
 c_r = c_f
-l = 2.875
 
 # Optimal gains
 optimal_gain = {'V10_L0'  : np.array([0.0367, 0.0758, -0.2508, -1.2211]),

@@ -11,9 +11,6 @@ import time
 from sys import platform as _platform
 import os
 
-if not os.path.exists('./Tests'):
-    os.makedirs('./Tests')
-
 class FullcarBenchmark:
 
     def __init__(self):
@@ -41,16 +38,6 @@ class FullcarBenchmark:
         self.episode_cnt = 0
         self.step_cnt = 0
         self.matlab_cnt = 0.0
-
-        self.Cmax = 4000
-        self.Cmin = 300
-        self.R = 0.1
-        self.state_X = np.zeros((14,1))
-        self.count = 0
-
-        self.state_recon = True
-
-        self.state_SH = [0,0,0,0,0,0,0,0]
     
     def read_csv(self,log_dir):
         dataset = np.genfromtxt(log_dir + '.csv', delimiter = ',')
@@ -91,69 +78,6 @@ class FullcarBenchmark:
     def _terminate(self):
         self.matlab_eng.quit()
 
-    def skyhook_calculator(self,upper_vel,delta_vel):
-        Cmax = 4000
-        Cmin = 300
-        epsilon = 0.0001
-        alpha = 0.5
-        sat_limit = 1000
-        if upper_vel * delta_vel >= 0:
-            C = (alpha * Cmax * upper_vel + (1 - alpha) * Cmax * upper_vel)/(delta_vel + epsilon)
-            C = min(C,Cmax)
-            u = C * delta_vel
-        else:
-            u = Cmin*delta_vel
-        
-        if u >= 0:
-            if u > sat_limit:
-                u_ = sat_limit
-            else:
-                u_ = u
-        else:
-            if u < -sat_limit:
-                u_ = -sat_limit
-            else:
-                u_ = u
-        return u_
-    
-    def passive(self):
-        dz_fl = self.state_SH[0]
-        dz_fr = self.state_SH[2]
-        dz_rl = self.state_SH[4]
-        dz_rr = self.state_SH[6]
-
-        vel_fl = dz_fl - self.state_SH[1]
-        vel_fr = dz_fr - self.state_SH[3]
-        vel_rl = dz_rl - self.state_SH[5]
-        vel_rr = dz_rr - self.state_SH[7]
-
-        u_fl = 1000 * vel_fl
-        u_fr = 1000 * vel_fr
-        u_rl = 1000 * vel_rl
-        u_rr = 1000 * vel_rr
-
-        return [u_fl,u_fr,u_rl,u_rr]
-
-    def skyhook(self):
-                 
-        # self.state_SH = [fl2,tfl2,fr2,tfr2,rl2,trl2,rr2,trr2]
-        dz_fl = self.state_SH[0]
-        dz_fr = self.state_SH[2]
-        dz_rl = self.state_SH[4]
-        dz_rr = self.state_SH[6]
-
-        vel_fl = dz_fl - self.state_SH[1]
-        vel_fr = dz_fr - self.state_SH[3]
-        vel_rl = dz_rl - self.state_SH[5]
-        vel_rr = dz_rr - self.state_SH[7]
-
-        u_fl = self.skyhook_calculator(dz_fl,vel_fl)
-        u_fr = self.skyhook_calculator(dz_fr,vel_fr)
-        u_rl = self.skyhook_calculator(dz_rl,vel_rl)
-        u_rr = self.skyhook_calculator(dz_rr,vel_rr)
-        
-        return [u_fl,u_fr,u_rl,u_rr]
-
     def iteration(self):
         for method in ['lqr','sh','pas']:
             for i in range(50):
@@ -164,138 +88,6 @@ class FullcarBenchmark:
                 self.car_vel = self.car_vel_total[i*2000:((i+1)*2000)]
                 self.main(method)
                 print(method, self.count)
-
-    def resetKKFVar(self):
-        self.A_bp_body = np.array([[1.9822,-0.9824,0,0],
-                            [1,0,0,0],
-                            [0.7101, -0.7101, 0.7633, -0.2814],
-                            [0,0,1,0]])
-        self.B_bp_body = np.array([[0.3582],[0],[0.1283],[0]])
-        self.C_bp_body = np.array([0.7101,-0.7101,0.7633,-1.2814])
-        self.D_bp_body = 0.1283
-
-        self.A_bp_tire = np.array([[1.8937, -0.8995, 0, 0],
-                                   [1, 0, 0, 0],
-                                   [0.9861, -0.9891, 0.0429, -0.1923],
-                                   [0, 0, 1, 0]])
-        self.B_bp_tire = np.array([[0.5207],[0],[0.2711],[0]])
-        self.C_bp_tire = np.array([0.9861, -0.9891, 0.0429, -1.1923])
-        self.D_bp_tire = 0.2711
-
-        self.filtered_fl = 0; self.dummy_fl = np.array([[0],[0],[0],[0]])
-        self.filtered_fr = 0; self.dummy_fr = np.array([[0],[0],[0],[0]])
-        self.filtered_rl = 0; self.dummy_rl = np.array([[0],[0],[0],[0]])
-        self.filtered_rr = 0; self.dummy_rr = np.array([[0],[0],[0],[0]])
-        self.filtered_tfl = 0; self.dummy_tfl = np.array([[0],[0],[0],[0]])
-        self.filtered_tfr = 0; self.dummy_tfr = np.array([[0],[0],[0],[0]])
-        self.filtered_trl = 0; self.dummy_trl = np.array([[0],[0],[0],[0]])
-        self.filtered_trr = 0; self.dummy_trr = np.array([[0],[0],[0],[0]])
-
-        self.P_tfl = np.zeros([2,2])
-        self.P_tfr = np.zeros([2,2])
-        self.P_trl = np.zeros([2,2])
-        self.P_trr = np.zeros([2,2])
-        self.P_fl = np.zeros([2,2])
-        self.P_fr = np.zeros([2,2])
-        self.P_rl = np.zeros([2,2])
-        self.P_rr = np.zeros([2,2])
-
-        self.hx_tfl = np.zeros([2,1])
-        self.hx_tfr = np.zeros([2,1])
-        self.hx_trl = np.zeros([2,1])
-        self.hx_trr = np.zeros([2,1])
-        self.hx_fl = np.zeros([2,1])
-        self.hx_fr = np.zeros([2,1])
-        self.hx_rl = np.zeros([2,1])
-        self.hx_rr = np.zeros([2,1])
-
-        self.W_body = 100
-        self.V_body = 0.01
-
-        self.W_tire = 100
-        self.V_tire = 0.01
-
-    def kkf(self,in_,position):
-        T = 0.01
-        Phi = np.array([[1,T],
-                        [0,1]])
-        Q = np.array([[T**3/3,T**2/2],
-                      [T**2/2,T]])
-        C = np.array([[0,1]])
-
-        if position == 'fl':
-            P = self.P_fl; hx = self.hx_fl
-            acc = self.C_bp_body @ self.dummy_fl + self.D_bp_body * in_
-            self.dummy_fl = self.A_bp_body @ self.dummy_fl + self.B_bp_body * in_
-            W = self.W_body; V = self.V_body        
-        elif position == 'fr':
-            P = self.P_fr; hx = self.hx_fr
-            acc = self.C_bp_body @ self.dummy_fr + self.D_bp_body * in_
-            self.dummy_fr = self.A_bp_body @ self.dummy_fr + self.B_bp_body * in_
-            W = self.W_body; V = self.V_body        
-        elif position == 'rl':
-            P = self.P_rl; hx = self.hx_rl
-            acc = self.C_bp_body @ self.dummy_rl + self.D_bp_body * in_
-            self.dummy_rl = self.A_bp_body @ self.dummy_rl + self.B_bp_body * in_
-            W = self.W_body; V = self.V_body        
-        elif position == 'rr':
-            P = self.P_rr; hx = self.hx_rr
-            acc = self.C_bp_body @ self.dummy_rr + self.D_bp_body * in_
-            self.dummy_rr = self.A_bp_body @ self.dummy_rr + self.B_bp_body * in_
-            W = self.W_body; V = self.V_body
-        elif position == 'tfl':
-            P = self.P_tfl; hx = self.hx_tfl
-            acc = self.C_bp_tire @ self.dummy_tfl + self.D_bp_tire * in_
-            self.dummy_tfl = self.A_bp_tire @ self.dummy_tfl + self.B_bp_tire * in_
-            W = self.W_tire; V = self.V_tire
-        elif position == 'tfr':
-            P = self.P_tfr; hx = self.hx_tfr
-            acc = self.C_bp_tire @ self.dummy_tfr + self.D_bp_tire * in_
-            self.dummy_tfr = self.A_bp_tire @ self.dummy_tfr + self.B_bp_tire * in_
-            W = self.W_tire; V = self.V_tire
-        elif position == 'trl':
-            P = self.P_trl; hx = self.hx_trl
-            acc = self.C_bp_tire @ self.dummy_trl + self.D_bp_tire * in_
-            self.dummy_trl = self.A_bp_tire @ self.dummy_trl + self.B_bp_tire * in_
-            W = self.W_tire; V = self.V_tire
-        elif position == 'trr':
-            P = self.P_trr; hx = self.hx_trr
-            acc = self.C_bp_tire @ self.dummy_trr + self.D_bp_tire * in_
-            self.dummy_trr = self.A_bp_tire @ self.dummy_trr + self.B_bp_tire * in_
-            W = self.W_tire; V = self.V_tire  
-        
-        K = P @ np.transpose(C) * 1 / (C @ P @ np.transpose(C) + V)
-        xk = hx + K @ (acc - C @ hx)
-        p_buff = (np.eye(2) - K @ C) @ P
-        hx = Phi @ xk
-        P = Phi @ p_buff * np.transpose(Phi) + Q * W
-
-        if position == 'fl':
-            self.P_fl = P
-            self.hx_fl = hx
-        elif position == 'fr':
-            self.P_fr = P
-            self.hx_fr = hx
-        elif position == 'rl':
-            self.P_rl = P
-            self.hx_rl = hx
-        elif position == 'rr':
-            self.P_rr = P
-            self.hx_rr = hx
-        elif position == 'tfl':
-            self.P_tfl = P
-            self.hx_tfl = hx
-        elif position == 'tfr':
-            self.P_tfr = P
-            self.hx_tfr = hx
-        elif position == 'trl':
-            self.P_trl = P
-            self.hx_trl = hx
-        elif position == 'trr':
-            self.P_trr = P
-            self.hx_trr = hx
-        
-        return xk
 
     def main(self, method):
         u_fl = 0

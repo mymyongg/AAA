@@ -26,6 +26,7 @@ from graphic_tool import GraphicTool
 import matplotlib.pyplot as plt
 import control
 from constants import *
+import matlab.engine
 
 # Setting
 sun_altitude = 30.0
@@ -37,8 +38,8 @@ num_mixture = 3
 model_path = 'successful_model/3lane_M14_mixed'
 lpf_tau = 0.01
 
-lookahead = 8
-ref_speed = 20
+lookahead = 6
+ref_speed = 15
 
 
 def kalman(yL_pred, epsL_pred, yL_unc, epsL_unc, vx, L, x_00, u, P_00):
@@ -102,6 +103,7 @@ def main():
     model.load_model(model_path)
     pid_controller = PID(1.0, 0.1, 0.05, setpoint=ref_speed, output_limits=(0.0, 1.0), sample_time=sampling_time) # ref speed
     graphic = GraphicTool()
+    eng = matlab.engine.start_matlab()
 
     # Initial values
     x_pred_kf = np.zeros((4, 1))
@@ -109,6 +111,7 @@ def main():
     u = 0.0
     yL_pred_lpf = 0.0
     epsL_pred_lpf = 0.0
+    xc_matlab = matlab.double([0.0, 0.0, 0.0, 0.0])
     
     # Placeholder
     gt = []
@@ -129,8 +132,8 @@ def main():
             psi_dot = obs[-4]
             
             total_expectation, uncertainty = model.get_estimation(img)
-            total_expectation = total_expectation[0] # (M,)
-            uncertainty = uncertainty[0] # (M, M)
+            total_expectation = total_expectation.numpy()[0] # (M,)
+            uncertainty = uncertainty.numpy()[0] # (M, M)
 
             for i in range(len(lookahead_list)):
                 e_pred['y'+str(lookahead_list[i])+'_pred'] = total_expectation[i]
@@ -169,10 +172,8 @@ def main():
                 epsL_unc = e_pred['eps8_unc']
             
             # CMDN prediction
-            x_pred = np.array([[vy],
-                               [psi_dot],
-                               [yL_pred],
-                               [epsL_pred]])
+            x_pred = np.array([[vy], [psi_dot], [yL_pred], [epsL_pred]])
+            x_pred_matlab = matlab.double([vy, psi_dot, yL_pred, epsL_pred])
 
             # Kalman filter
             # x_pred_kf, P_kf = kalman(yL_pred, epsL_pred, yL_unc, epsL_unc, ref_speed, lookahead, x_pred_kf, u, P_kf)
@@ -214,8 +215,10 @@ def main():
 
             # u_ff = K_10 * (l - ((l_f * c_f - l_r * c_r) * vx**2 * m) / (c_r * c_f * l)) # Feed forward control
             # u = -np.matmul(K, x_true)[0]
-            u = -np.matmul(K, x_pred)[0]            
+            # u = -np.matmul(K, x_pred)[0]            
             # u = -np.matmul(K, x_pred_lpf)[0]
+
+            u, xc_matlab = eng.cal_u_dynamic(float(ref_speed), x_pred_matlab, xc_matlab, nargout=2)
 
             throttle = pid_controller(vx)
             control = carla.VehicleControl(throttle=throttle, steer=-u)
