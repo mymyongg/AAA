@@ -27,20 +27,7 @@ import matplotlib.pyplot as plt
 import control
 from constants import *
 import matlab.engine
-
-# Setting
-sun_altitude = 30.0
-sampling_time = 0.05
-img_size = (90, 320, 3)
-lookahead_list = [2, 4, 6, 8, 10, 20, 30]
-num_pred = 2 * len(lookahead_list)
-num_mixture = 3
-model_path = 'successful_model/3lane_M14_mixed'
-lpf_tau = 0.01
-
-lookahead = 6
-ref_speed = 15
-
+import keyboard
 
 def kalman(yL_pred, epsL_pred, yL_unc, epsL_unc, vx, L, x_00, u, P_00):
     Q = np.array([[0, 0, 0, 0],
@@ -94,6 +81,18 @@ def lowpass(tau, ts, pre_y, x):
     return y
 
 def main():
+    # Setting
+    sun_altitude = 30.0
+    sampling_time = 0.05
+    img_size = (90, 320, 3)
+    lookahead_list = [2, 4, 6, 8, 10, 20, 30]
+    num_pred = 2 * len(lookahead_list)
+    num_mixture = 3
+    model_path = 'successful_model/3lane_M14_mixed'
+    lpf_tau = 0.01
+    lookahead = 6
+    ref_speed = 15
+
     env = CarlaEnv(sun_altitude)
     settings = env.world.get_settings()
     settings.fixed_delta_seconds = sampling_time
@@ -124,6 +123,17 @@ def main():
     try:
         while True:
             env.world.tick()
+
+            if keyboard.is_pressed('u'):
+                lookahead += 2
+                ref_speed += 5
+                pid_controller.setpoint = ref_speed
+                print('L:{}, V:{}'.format(lookahead, ref_speed))
+            if keyboard.is_pressed('d'):
+                lookahead -= 2
+                ref_speed -= 5
+                pid_controller.setpoint = ref_speed
+                print('L:{}, V:{}'.format(lookahead, ref_speed))
 
             obs = env.make_observation() # [img, [L1, y_L1, eps_L1, K_L1], [L2, y_L2, eps_L2, K_L2], ..., [L8, y_L8, eps_L8, K_L8], vx, vy, yaw_rate, steer, throttle, brake]
             img = np.array([obs[0] / 255.0])
