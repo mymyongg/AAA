@@ -102,7 +102,9 @@ def main():
     model.load_model(model_path)
     pid_controller = PID(1.0, 0.1, 0.05, setpoint=ref_speed, output_limits=(0.0, 1.0), sample_time=sampling_time) # ref speed
     graphic = GraphicTool()
+    print("Starting Matlab...")
     eng = matlab.engine.start_matlab()
+    print('Matlab stared')
 
     # Initial values
     x_pred_kf = np.zeros((4, 1))
@@ -111,6 +113,7 @@ def main():
     yL_pred_lpf = 0.0
     epsL_pred_lpf = 0.0
     xc_matlab = matlab.double([0.0, 0.0, 0.0, 0.0])
+    timestamp = 0
     
     # Placeholder
     gt = []
@@ -119,21 +122,23 @@ def main():
     pred_lpf = []
     e_true = {}
     e_pred = {}
+    y0_plot = []
+    time_plot = []
     
     try:
         while True:
             env.world.tick()
 
-            if keyboard.is_pressed('u'):
-                lookahead += 2
-                ref_speed += 5
-                pid_controller.setpoint = ref_speed
-                print('L:{}, V:{}'.format(lookahead, ref_speed))
-            if keyboard.is_pressed('d'):
-                lookahead -= 2
-                ref_speed -= 5
-                pid_controller.setpoint = ref_speed
-                print('L:{}, V:{}'.format(lookahead, ref_speed))
+            # if keyboard.is_pressed('u'):
+            #     lookahead += 2
+            #     ref_speed += 5
+            #     pid_controller.setpoint = ref_speed
+            #     print('L:{}, V:{}'.format(lookahead, ref_speed))
+            # if keyboard.is_pressed('d'):
+            #     lookahead -= 2
+            #     ref_speed -= 5
+            #     pid_controller.setpoint = ref_speed
+            #     print('L:{}, V:{}'.format(lookahead, ref_speed))
 
             obs = env.make_observation() # [img, [L1, y_L1, eps_L1, K_L1], [L2, y_L2, eps_L2, K_L2], ..., [L8, y_L8, eps_L8, K_L8], vx, vy, yaw_rate, steer, throttle, brake]
             img = np.array([obs[0] / 255.0])
@@ -198,7 +203,7 @@ def main():
             #                        [yL_pred_lpf],
             #                        [epsL_pred_lpf]])
 
-            # Ground truth
+            # Ground truth : Need modification!!!!!!!!!!
             for i in range(len(lookahead_list)):
                 e_true['y'+str(lookahead_list[i])+'_true'] = obs[i+1][1]
                 e_true['eps'+str(lookahead_list[i])+'_true'] = obs[i+1][2]
@@ -210,36 +215,46 @@ def main():
                                [psi_dot],
                                [yL_true],
                                [epsL_true]])
+            x_true_matlab = matlab.double([vy, psi_dot, yL_true, epsL_true])
 
-            # For plotting kf
-            gt.append(yL_true)
-            pred.append(yL_pred)
+            # For plotting
+            # gt.append(yL_true)
+            # pred.append(yL_pred)
             # pred_kf.append(yL_pred_kf)
             # pred_lpf.append(yL_pred_lpf)
+            y0_plot.append(obs[1][1])
+            timestamp += 0.05
+            time_plot.append(timestamp)
 
             graphic.update_plot(yL_true, yL_pred, epsL_true, epsL_pred, e_pred['y10_unc'], e_pred['y20_unc'], e_pred['y30_unc'])
 
-            # print('y10:{:10.2f}, eps10:{:10.2f}, vx:{:10.2f}, vy:{:10.2f}, yaw_rate:{:10.2f}, steer:{:10.2f}, K:{:10.4f}'.format(y10, eps10, vx, vy, yaw_rate, steer, K_10))
-
-            K = optimal_gain['V'+str(int(ref_speed))+'_L'+str(int(lookahead))]
-
-            # u_ff = K_10 * (l - ((l_f * c_f - l_r * c_r) * vx**2 * m) / (c_r * c_f * l)) # Feed forward control
+            # Feedforward control
+            # u_ff = K_10 * (l - ((l_f * c_f - l_r * c_r) * vx**2 * m) / (c_r * c_f * l))
+            
+            # LQR state feedback control
+            # K = optimal_gain['V'+str(int(ref_speed))+'_L'+str(int(lookahead))]
             # u = -np.matmul(K, x_true)[0]
-            # u = -np.matmul(K, x_pred)[0]            
+            # u = -np.matmul(K, x_pred)[0]
             # u = -np.matmul(K, x_pred_lpf)[0]
-
-            u, xc_matlab = eng.cal_u_dynamic(float(ref_speed), x_pred_matlab, xc_matlab, nargout=2)
+            
+            # LPV control from Matlab
+            # u, xc_matlab = eng.cal_u_dynamic(float(ref_speed), x_pred_matlab, xc_matlab, nargout=2)
+            u, xc_matlab = eng.cal_u_dynamic(float(ref_speed), x_true_matlab, xc_matlab, nargout=2)
+            print(u, xc_matlab)
 
             throttle = pid_controller(vx)
             control = carla.VehicleControl(throttle=throttle, steer=-u)
             env.ego_vehicle_actor.apply_control(control)
+            
+            if timestamp > 50.0:
+                break
 
     finally:
         settings.synchronous_mode = False
         env.world.apply_settings(settings)
-
-        plt.plot(gt, 'b', label='ground truth')
-        plt.plot(pred, 'r', label='prediction')
+        np.savez('y0_plot_v'+str(ref_speed)+'dark', y0=np.array(y0_plot), time=np.array(time_plot))
+        # plt.plot(gt, 'b', label='ground truth')
+        # plt.plot(pred, 'r', label='prediction')
         # plt.plot(pred_kf, 'g', label='kalman filter')
         # plt.plot(pred_lpf, 'k', label='low pass filter')
         plt.legend()
