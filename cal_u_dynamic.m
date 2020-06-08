@@ -1,7 +1,7 @@
 function [u,xc] = cal_u_dynamic(Vx,x,xc)
-    load('/mat_files/LPV_barycentric_vehicle_reduced_dynamic.mat');
-    load('/mat_files/controller_matrix.mat');
-    load('/mat_files/system_matrix.mat');
+    load('mat_files/LPV_barycentric_vehicle_reduced_dynamic.mat');
+    load('mat_files/controller_matrix.mat');
+    load('mat_files/system_matrix.mat');
     if Vx < 6.01
         Vx = 6.01;
     elseif Vx > 35.99
