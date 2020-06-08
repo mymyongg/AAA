@@ -4,11 +4,10 @@ function [u,xc] = cal_u_dynamic(Vx,x,xc)
     load('/mat_files/system_matrix.mat');
     if Vx < 6.01
         Vx = 6.01;
-    elseif Vx > 29.99
-        Vx = 29.99;
+    elseif Vx > 35.99
+        Vx = 36;
     end
-    Vx0 = 18; Vx_inv0 = 0.1;
-    param = [Vx - Vx0, 1/Vx - Vx_inv0];
+    param = [Vx, 1/Vx];
     n = length(barycentric);
     for i = 1 : n
         vertex_minus_parameter = barycentric(1).vertex(i,:) - param;
