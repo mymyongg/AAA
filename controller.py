@@ -104,7 +104,7 @@ def main():
     graphic = GraphicTool()
     print("Starting Matlab...")
     eng = matlab.engine.start_matlab()
-    print('Matlab stared')
+    print('Matlab is started!')
 
     # Initial values
     x_pred_kf = np.zeros((4, 1))
@@ -151,8 +151,8 @@ def main():
             uncertainty = uncertainty.numpy()[0] # (M, M)
 
             for i in range(len(lookahead_list)):
-                e_pred['y'+str(lookahead_list[i])+'_pred'] = total_expectation[i]
-                e_pred['eps'+str(lookahead_list[i])+'_pred'] = total_expectation[i+len(lookahead_list)]
+                e_pred['y'+str(lookahead_list[i])] = total_expectation[i]
+                e_pred['eps'+str(lookahead_list[i])] = total_expectation[i+len(lookahead_list)]
                 e_pred['y'+str(lookahead_list[i])+'_unc'] = uncertainty[i, i]
                 e_pred['eps'+str(lookahead_list[i])+'_unc'] = uncertainty[i+len(lookahead_list), i+len(lookahead_list)]
             
@@ -161,29 +161,29 @@ def main():
             # lookahead = ref_speed * modulator * 0.4
 
             if 0 <= lookahead < 1.0:
-                yL_pred = e_pred['y0_pred']
+                yL_pred = e_pred['y0']
                 yL_unc = e_pred['y0_unc']
-                epsL_pred = e_pred['eps0_pred']
+                epsL_pred = e_pred['eps0']
                 epsL_unc = e_pred['eps0_unc']
             if 1.0 <= lookahead < 3.0:
-                yL_pred = e_pred['y2_pred']
+                yL_pred = e_pred['y2']
                 yL_unc = e_pred['y2_unc']
-                epsL_pred = e_pred['eps2_pred']
+                epsL_pred = e_pred['eps2']
                 epsL_unc = e_pred['eps2_unc']
             if 3.0 <= lookahead < 5.0:
-                yL_pred = e_pred['y4_pred']
+                yL_pred = e_pred['y4']
                 yL_unc = e_pred['y4_unc']
-                epsL_pred = e_pred['eps4_pred']
+                epsL_pred = e_pred['eps4']
                 epsL_unc = e_pred['eps4_unc']
             if 5.0 <= lookahead < 7.0:
-                yL_pred = e_pred['y6_pred']
+                yL_pred = e_pred['y6']
                 yL_unc = e_pred['y6_unc']
-                epsL_pred = e_pred['eps6_pred']
+                epsL_pred = e_pred['eps6']
                 epsL_unc = e_pred['eps6_unc']
             if 7.0 <= lookahead < 9.0:
-                yL_pred = e_pred['y8_pred']
+                yL_pred = e_pred['y8']
                 yL_unc = e_pred['y8_unc']
-                epsL_pred = e_pred['eps8_pred']
+                epsL_pred = e_pred['eps8']
                 epsL_unc = e_pred['eps8_unc']
             
             # CMDN prediction
@@ -203,13 +203,15 @@ def main():
             #                        [yL_pred_lpf],
             #                        [epsL_pred_lpf]])
 
-            # Ground truth : Need modification!!!!!!!!!!
-            for i in range(len(lookahead_list)):
-                e_true['y'+str(lookahead_list[i])+'_true'] = obs[i+1][1]
-                e_true['eps'+str(lookahead_list[i])+'_true'] = obs[i+1][2]
+            # Ground truth
+            e_obs = obs[2:7] + [obs[8]] + [obs[10]]
 
-            yL_true = e_true['y'+str(lookahead)+'_true']
-            epsL_true = e_true['eps'+str(lookahead)+'_true']
+            for i in range(len(lookahead_list)):
+                e_true['y'+str(lookahead_list[i])] = e_obs[i][1]
+                e_true['eps'+str(lookahead_list[i])] = e_obs[i][2]
+
+            yL_true = e_true['y'+str(lookahead)]
+            epsL_true = e_true['eps'+str(lookahead)]
            
             x_true = np.array([[vy],
                                [psi_dot],
@@ -222,9 +224,9 @@ def main():
             # pred.append(yL_pred)
             # pred_kf.append(yL_pred_kf)
             # pred_lpf.append(yL_pred_lpf)
-            y0_plot.append(obs[1][1])
-            timestamp += 0.05
-            time_plot.append(timestamp)
+            # y0_plot.append(obs[1][1])
+            # timestamp += 0.05
+            # time_plot.append(timestamp)
 
             graphic.update_plot(yL_true, yL_pred, epsL_true, epsL_pred, e_pred['y10_unc'], e_pred['y20_unc'], e_pred['y30_unc'])
 
@@ -252,7 +254,7 @@ def main():
     finally:
         settings.synchronous_mode = False
         env.world.apply_settings(settings)
-        np.savez('y0_plot_v'+str(ref_speed)+'dark', y0=np.array(y0_plot), time=np.array(time_plot))
+        # np.savez('y0_plot_v'+str(ref_speed)+'dark', y0=np.array(y0_plot), time=np.array(time_plot))
         # plt.plot(gt, 'b', label='ground truth')
         # plt.plot(pred, 'r', label='prediction')
         # plt.plot(pred_kf, 'g', label='kalman filter')
