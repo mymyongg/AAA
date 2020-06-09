@@ -15,8 +15,8 @@ class GraphicTool():
         pygame.draw.line(self.screen, (255, 255, 255), [300, 0], [300, 400], 2) # Right line
         pygame.draw.line(self.screen, (255, 255, 0), [200, 0], [200, 400], 2) # Center line
         
-        true_center = np.array([200 + true_y * 100, 200])
-        est_center = np.array([200 + est_y * 100, 200])
+        true_center = np.array([200 + true_y*200/3.5, 200])
+        est_center = np.array([200 + est_y*200/3.5, 200])
         p1_true, p2_true, p3_true, p4_true = self.rotate(true_psi)
         p1_est, p2_est, p3_est, p4_est = self.rotate(est_psi)
         p1_true = list(p1_true + true_center)

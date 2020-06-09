@@ -14,8 +14,8 @@ try:
         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
 except IndexError:
     pass
-
 import carla
+
 from simple_pid import PID
 from env import CarlaEnv
 import cv2
