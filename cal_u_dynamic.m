@@ -29,6 +29,7 @@ function [u,xc] = cal_u_dynamic(Vx,x,xc)
     X = matrix.X;
     Y = matrix.Y;
     Cy = eye(4);
+    
     for i = 1 : n
         F = F + barycentric(i).coordinate * matrix.F{i};
         L = L + barycentric(i).coordinate * matrix.L{i};
@@ -41,6 +42,8 @@ function [u,xc] = cal_u_dynamic(Vx,x,xc)
     Ac = inv(V) * (Q - Y * A * X - Y * Bu * L - F * Cy * X)*inv(U);
     Bc = inv(V) * F;
     Cc = L * inv(U);
+    disp(Ac);
+    disp(Bc);
     u = Cc * xc;
     xc = Ac * xc + Bc * x;    
 end

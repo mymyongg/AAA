@@ -291,7 +291,8 @@ class KeyboardControl(object):
         world.hud.notification("Press 'H' or '?' for help.", seconds=4.0)
 
         #####################################################
-        self.sun_angle = 20.0
+        self.sun_altitude_angle = 20.0
+        self.sun_azimuth_angle = 0.0
         self.cruise_control = cruise_control
         self.use_g27 = use_g27
         self.world = world
@@ -336,13 +337,22 @@ class KeyboardControl(object):
                     world.next_weather()
                 #################################################################################
                 elif event.key == K_UP and pygame.key.get_mods() & KMOD_SHIFT:
-                    self.sun_angle += 5.0
-                    world.set_weather(carla.WeatherParameters(sun_altitude_angle=self.sun_angle))
-                    world.hud.notification("Sun altitude is {}".format(self.sun_angle))
+                    self.sun_altitude_angle += 5.0
+                    world.set_weather(carla.WeatherParameters(sun_altitude_angle=self.sun_altitude_angle, sun_azimuth_angle=self.sun_azimuth_angle))
+                    world.hud.notification("Sun altitude is {}".format(self.sun_altitude_angle))
                 elif event.key == K_DOWN and pygame.key.get_mods() & KMOD_SHIFT:
-                    self.sun_angle -= 5.0
-                    world.set_weather(carla.WeatherParameters(sun_altitude_angle=self.sun_angle))
-                    world.hud.notification("Sun altitude is {}".format(self.sun_angle))
+                    self.sun_altitude_angle -= 5.0
+                    world.set_weather(carla.WeatherParameters(sun_altitude_angle=self.sun_altitude_angle, sun_azimuth_angle=self.sun_azimuth_angle))
+                    world.hud.notification("Sun altitude is {}".format(self.sun_altitude_angle))
+
+                elif event.key == K_RIGHT and pygame.key.get_mods() & KMOD_SHIFT:
+                    self.sun_azimuth_angle += 5.0
+                    world.set_weather(carla.WeatherParameters(sun_altitude_angle=self.sun_altitude_angle, sun_azimuth_angle=self.sun_azimuth_angle))
+                    world.hud.notification("Sun azimuth is {}".format(self.sun_azimuth_angle))
+                elif event.key == K_LEFT and pygame.key.get_mods() & KMOD_SHIFT:
+                    self.sun_azimuth_angle -= 5.0
+                    world.set_weather(carla.WeatherParameters(sun_altitude_angle=self.sun_altitude_angle, sun_azimuth_angle=self.sun_azimuth_angle))
+                    world.hud.notification("Sun azimuth is {}".format(self.sun_azimuth_angle))
                 #################################################################################
                 elif event.key == K_g:
                     world.toggle_radar()
@@ -431,10 +441,10 @@ class KeyboardControl(object):
                         current_lights ^= carla.VehicleLightState.RightBlinker
 
                     ######################################################
-                    if self.sun_angle <= 0.0:
-                        current_lights |= carla.VehicleLightState.HighBeam
-                    else:
-                        current_lights = carla.VehicleLightState.NONE
+                    # if self.sun_altitude_angle <= 0.0:
+                    #     current_lights |= carla.VehicleLightState.HighBeam
+                    # else:
+                    #     current_lights = carla.VehicleLightState.NONE
                     ######################################################
 
         if not self._autopilot_enabled:
