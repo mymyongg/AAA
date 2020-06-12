@@ -90,8 +90,8 @@ def main():
     num_mixture = 3
     model_path = 'successful_model/3lane_M14_mixed'
     lpf_tau = 0.01
-    lookahead = 6
-    ref_speed = 15
+    lookahead = 4
+    ref_speed = 10
 
     env = CarlaEnv(sun_altitude)
     settings = env.world.get_settings()
