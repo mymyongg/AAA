@@ -4,8 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 
-# image_path = 'dataset/test_images'
-# label_path = 'dataset/test_labels'
+model_path = 'successful_model/fog_024'
 image_path = 'dataset/images'
 label_path = 'dataset/labels'
 
@@ -30,27 +29,35 @@ dataset_labels = []
 for label_file in label_list:
     labels = np.load(os.path.join(label_path, label_file))
     labels = labels.get('labels')
-    labels = np.concatenate([labels[:, 0:7, 1], labels[:, 0:7, 2]], axis=1) # (N, 16)
+    labels = np.concatenate([labels[:, 1:, 1], labels[:, 1:, 2]], axis=1) # (N, 16)
     dataset_labels.append(labels)
 dataset_labels = np.concatenate(dataset_labels, axis=0)
 
-x_test = dataset_images[100:]
-y_test = dataset_labels[100:, :]
+# Generate test set
+# Fog level 0
+x_test = dataset_images[:5000][2500:3000]
+y_test = dataset_labels[:5000][2500:3000]
+# Fog level 1
+# x_test = dataset_images[5000:10000][2500:3000]
+# y_test = dataset_labels[5000:10000][2500:3000]
+# Fog level 2
+# x_test = dataset_images[10000:][2500:3000]
+# y_test = dataset_labels[10000:][2500:3000]
 
 x_test = x_test / 255.0
 
-# Load trained model
-estimator = CMDN(img_size=(90, 320, 3), M=14, KMIX=3)
-model_path = 'successful_model/3lane_M14'
+# Load model
+estimator = CMDN(img_size=(90, 320, 3), M=8, KMIX=3)
 estimator.load_model(model_path)
 
 # Predict
 y_pred = estimator.CMDN_model.predict(x_test)
 pi, mu, sigma = estimator.get_GMM_params(y_pred)
 total_expectation, uncertainty = estimator.get_estimation(x_test) # uncertainty: (N, M, M)
+pred = np.array(total_expectation) # (N, M)
 
-y_L_pred = total_expectation # (N, M)
-y_L_pred = np.array(y_L_pred)
+yL_pred = pred[:, :4]
+epsL_pred = pred[:, 4:]
 
 unc = []
 for i in range(uncertainty.shape[1]):
@@ -58,44 +65,64 @@ for i in range(uncertainty.shape[1]):
 unc = np.array(unc) # (M, N)
 
 # Plot result
-y_test_max = y_test.max()
-y_pred_max = y_L_pred.max()
-y_max = max(y_test_max, y_pred_max) + 2.0
+yL_limit = max(abs(y_test[:, :4]).max(), abs(yL_pred).max()) * 1.1
+epsL_limit = max(abs(y_test[:, 4:]).max(), abs(epsL_pred).max()) * 1.1
+sigma_yL_limit = unc[:4, :].max() * 1.1
+sigma_epsL_limit = unc[4:, :].max() * 1.1
 
-y_test_min = y_test.min()
-y_pred_min = y_L_pred.min()
-y_min = min(y_test_min, y_pred_min) - 2.0
+yL_limit = 2.6
+epsL_limit = 0.4
+sigma_yL_limit = 1.6
+sigma_epsL_limit = 0.04
 
-row = 2
-column = 7
 
-for i in range(row * column):
-    axis = plt.subplot(row, column, i+1)
-    plt.plot(y_test[:, i], 'b', label='ground truth')
-    plt.plot(y_L_pred[:, i], 'r', label='prediction')
-    plt.ylim(y_min, y_max)
-    plt.xlabel('timestep')
-    plt.ylabel('y_' + str(i * 5))
-    plt.legend()
+time = np.linspace(0.05, 25, 500)
+
+fig = plt.figure(figsize=(25, 8))
+# plt.rc('font', size=10)
+# plt.rc('axes', titlesize=10)
+plt.rc('axes', labelsize=13)
+# plt.rc('xtick', labelsize=)
+# plt.rc('ytick', labelsize=)
+plt.rc('legend', fontsize=12)
+# plt.rc('figure', titlesize=BIGGER_SIZE)
+
+for i, L in enumerate([4, 6, 8, 10]):
+    plt.subplot(4, 4, i+1)
+    if i==0:
+        plt.plot(time, y_test[:, i], 'b-', label='true')
+        plt.plot(time, yL_pred[:, i], 'r:', label='prediction')
+        plt.legend(loc=3)
+    else:
+        plt.plot(time, y_test[:, i], 'b-')
+        plt.plot(time, yL_pred[:, i], 'r:')
+    plt.ylim(-yL_limit, yL_limit)
+    plt.ylabel('$y_{'+str(L)+'}$ [m]')
     plt.grid(True)
+
+    plt.subplot(4, 4, i+5)
+    plt.plot(time, unc[i, :], 'k')
+    plt.ylim(-0.05, sigma_yL_limit)
+    plt.ylabel('$\sigma_{y_{'+str(L)+'}}$ [m]')
+    plt.grid(True)
+
+    plt.subplot(4, 4, i+9)
+    if i==0:
+        plt.plot(time, y_test[:, i+4], 'b-', label='true')
+        plt.plot(time, epsL_pred[:, i], 'r:', label='prediction')
+        plt.legend(loc=3)
+    else:
+        plt.plot(time, y_test[:, i+4], 'b-')
+        plt.plot(time, epsL_pred[:, i], 'r:')
+    plt.ylim(-epsL_limit, epsL_limit)
+    plt.ylabel('$\epsilon_{'+str(L)+'}$ [rad]')
+    plt.grid(True)
+
+    plt.subplot(4, 4, i+13)
+    plt.plot(time, unc[i+4, :], 'k')
+    plt.ylim(-0.001,sigma_epsL_limit)
+    plt.xlabel('time [s]')
+    plt.ylabel('$\sigma_{\epsilon_{'+str(L)+'}}$ [rad]')
+    plt.grid(True)
+
 plt.show()
-
-# for i in range(row * column):
-#     axis = plt.subplot(row, column, i+1)
-#     plt.plot(unc[i, :], 'r', label='uncertainty')
-#     plt.ylim(unc[:8, :].min() - 0.5, unc[:8, :].max() + 0.5)
-#     plt.xlabel('timestep')
-#     plt.ylabel('unc_y_' + str(i * 5))
-#     plt.legend()
-#     plt.grid(True)
-# plt.show()
-
-# for i in range(row * column):
-#     axis = plt.subplot(row, column, i+1)
-#     plt.plot(unc[i+8, :], 'r', label='uncertainty')
-#     plt.ylim(unc[8:, :].min() - 0.05, unc[8:, :].max() + 0.05)
-#     plt.xlabel('timestep')
-#     plt.ylabel('unc_eps_' + str(i * 5))
-#     plt.legend()
-#     plt.grid(True)
-# plt.show()

@@ -28,7 +28,7 @@ if __name__ == "__main__":
     for label_file in label_list:
         labels = np.load(os.path.join(label_path, label_file))
         labels = labels.get('labels') # (N, L, 3)
-        labels = np.concatenate([labels[:, :, 1], labels[:, :, 2]], axis=1) # [0.01, 2.0, 4.0, 6.0, 8.0, 10.0, 15.0, 20.0, 25.0, 30.0]
+        labels = np.concatenate([labels[:, 1:, 1], labels[:, 1:, 2]], axis=1)
         dataset_labels.append(labels)
     dataset_labels = np.concatenate(dataset_labels, axis=0) # (N, 10)
 
@@ -36,8 +36,10 @@ if __name__ == "__main__":
     
     # Shuffle dataset
     shuffled_index = np.random.permutation(num_dataset)
-    dataset_images = dataset_images[shuffled_index][:20000, ...]
-    dataset_labels = dataset_labels[shuffled_index][:20000, ...]
+    # dataset_images = dataset_images[shuffled_index][:20000, ...]
+    # dataset_labels = dataset_labels[shuffled_index][:20000, ...]
+    dataset_images = dataset_images[shuffled_index]
+    dataset_labels = dataset_labels[shuffled_index]
 
     num_dataset = dataset_images.shape[0]
     print('num_dataset:{}'.format(num_dataset))
@@ -46,17 +48,17 @@ if __name__ == "__main__":
 
     # Devide training and validation data
     x_train = dataset_images[:num_train, ...]
-    y_train = dataset_labels[:num_train, :]
+    y_train = dataset_labels[:num_train, ...]
 
     x_validation = dataset_images[num_train:, ...]
-    y_validation = dataset_labels[num_train:, :]
+    y_validation = dataset_labels[num_train:, ...]
 
     # Preprocess input
     x_train = x_train / 255.0
     x_validation = x_validation / 255.0
 
     # Train model
-    estimator = CMDN(img_size=(90, 320, 3), M=14, KMIX=3)
+    estimator = CMDN(img_size=(90, 320, 3), M=8, KMIX=3)
     estimator.build_model()
     estimator.train_model(x_train, y_train, x_validation, y_validation)
     estimator.report_training_results()

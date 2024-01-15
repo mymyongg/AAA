@@ -209,7 +209,7 @@ class World(object):
                 print('Please add some Vehicle Spawn Point to your UE4 scene.')
                 sys.exit(1)
             spawn_points = self.map.get_spawn_points()
-            spawn_point = spawn_points[2]
+            spawn_point = spawn_points[1]
             # spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
         # Set up the sensors.
@@ -307,7 +307,8 @@ class KeyboardControl(object):
                 
                 while True:
                     pygame.event.get()
-                    if self.g27.get_axis(2) > 0.99 and self.g27.get_axis(3) > 0.99:
+                    # if self.g27.get_axis(2) > 0.99 and self.g27.get_axis(3) > 0.99:
+                    if self.g27.get_axis(3) > 0.99:
                         print('Pedal calibration done')
                         break
                 time.sleep(1)
@@ -489,7 +490,7 @@ class KeyboardControl(object):
 
         #######################################################################################
         if self.use_g27:
-            self._control.throttle = round((1.0 - self.g27.get_axis(2)) * 0.5, 1) # [1.0, -1.0] to [0.0, 1.0]
+            # self._control.throttle = round((1.0 - self.g27.get_axis(2)) * 0.5, 1) # [1.0, -1.0] to [0.0, 1.0]
             self._control.steer = self.g27.get_axis(0) # [-1.0, 1.0]
             self._control.brake = round((1.0 - self.g27.get_axis(3)) * 0.5, 1) # [1.0, -1.0] to [0.0, 1.0]
             if self.cruise_control != 0.0:
