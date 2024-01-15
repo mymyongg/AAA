@@ -18,8 +18,6 @@ import carla
 
 from simple_pid import PID
 from env import CarlaEnv
-import cv2
-import time
 import numpy as np
 import pygame
 from graphic_tool import GraphicTool
@@ -27,7 +25,8 @@ import matplotlib.pyplot as plt
 import control
 from constants import *
 import matlab.engine
-import keyboard
+import time
+import cv2
 
 def kalman(yL_pred, epsL_pred, yL_unc, epsL_unc, vx, L, x_00, u, P_00):
     Q = np.array([[0, 0, 0, 0],
@@ -81,138 +80,152 @@ def lowpass(tau, ts, pre_y, x):
     return y
 
 def main():
-    # Setting
+    # Set parameters
     sun_altitude = 30.0
-    sampling_time = 0.05
+    sampling_time = 0.02
     img_size = (90, 320, 3)
-    lookahead_list = [2, 4, 6, 8, 10, 20, 30]
+    lookahead_list = [4, 6, 8, 10]
     num_pred = 2 * len(lookahead_list)
     num_mixture = 3
-    model_path = 'successful_model/3lane_M14_mixed'
-    lpf_tau = 0.01
-    lookahead = 4
-    ref_speed = 10
+    model_path = 'successful_model/fog_024'
+    # lpf_tau = 0.01
+    unc_window = 5
+    lookahead = 8
+    ref_speed = 20
+    constant_speed = True
+    image_path = 'record_image/ours'
 
     env = CarlaEnv(sun_altitude)
+    for t in range(10):
+        print('Change settings in {} sec'.format(t))
+        time.sleep(1)
+
     settings = env.world.get_settings()
     settings.fixed_delta_seconds = sampling_time
     settings.synchronous_mode = True
     env.world.apply_settings(settings)
     model = CMDN(img_size=img_size, M=num_pred, KMIX=num_mixture)
     model.load_model(model_path)
-    pid_controller = PID(1.0, 0.1, 0.05, setpoint=ref_speed, output_limits=(0.0, 1.0), sample_time=sampling_time) # ref speed
+    pid_controller = PID(1.0, 0.1, 0.05, setpoint=ref_speed, output_limits=(-1.0, 1.0), sample_time=sampling_time)
     graphic = GraphicTool()
+    pygame.init()
     print("Starting Matlab...")
     eng = matlab.engine.start_matlab()
     print('Matlab is started!')
 
     # Initial values
-    x_pred_kf = np.zeros((4, 1))
-    P_kf = np.zeros((4, 4))
+    # x_pred_kf = np.zeros((4, 1))
+    # P_kf = np.zeros((4, 4))
     u = 0.0
-    yL_pred_lpf = 0.0
-    epsL_pred_lpf = 0.0
+    # yL_pred_lpf = 0.0
+    # epsL_pred_lpf = 0.0
     xc_matlab = matlab.double([0.0, 0.0, 0.0, 0.0])
     timestamp = 0
+    frame = 0
+    ckpt_100 = ckpt_200 = ckpt_300 = ckpt_400 = ckpt_500 = ckpt_600 = False
+
+    # Placeholders
+    true = {}
+    pred = {}
+    unc_list = {}
+    avg_unc = {}
+    plot_value = {}
+    for L in lookahead_list:
+        plot_value['y'+str(L)+'_pred'] = []
+        plot_value['eps'+str(L)+'_pred'] = []
+        plot_value['y'+str(L)+'_true'] = []
+        plot_value['eps'+str(L)+'_true'] = []
+        plot_value['K'+str(L)+'_true'] = []
+        plot_value['unc_y'+str(L)] = []
+        plot_value['unc_eps'+str(L)] = []
+        plot_value['avg_unc_y'+str(L)] = []
+        plot_value['avg_unc_eps'+str(L)] = []
+        unc_list['y'+str(L)] = [0.0] * unc_window
+        unc_list['eps'+str(L)] = [0.0] * unc_window
+    plot_value['y0_true'] = []
+    plot_value['eps0_true'] = []
+    plot_value['lookahead'] = []
+    plot_value['ref_speed'] = []
+    plot_value['speed'] = []
+    plot_value['timestamp'] = []
+    plot_value['distance'] = []
+    plot_value['steer'] = []
     
-    # Placeholder
-    gt = []
-    pred = []
-    pred_kf = []
-    pred_lpf = []
-    e_true = {}
-    e_pred = {}
-    y0_plot = []
-    time_plot = []
-    
+    # pred_kf = []
+    # pred_lpf = []
+
+    env.client.start_recorder("/home/mymyongg/10mps.log")
+
     try:
         while True:
             env.world.tick()
 
-            # if keyboard.is_pressed('u'):
-            #     lookahead += 2
-            #     ref_speed += 5
-            #     pid_controller.setpoint = ref_speed
-            #     print('L:{}, V:{}'.format(lookahead, ref_speed))
-            # if keyboard.is_pressed('d'):
-            #     lookahead -= 2
-            #     ref_speed -= 5
-            #     pid_controller.setpoint = ref_speed
-            #     print('L:{}, V:{}'.format(lookahead, ref_speed))
+            for event in pygame.event.get():
+                if event.type == pygame.KEYUP:
+                    if event.key == pygame.K_u:
+                        lookahead += 2
+                        ref_speed += 5
+                        pid_controller.setpoint = ref_speed
+                        print('L:{}, V:{}'.format(lookahead, ref_speed))
+                    if event.key == pygame.K_d:
+                        lookahead -= 2
+                        ref_speed -= 5
+                        pid_controller.setpoint = ref_speed
+                        print('L:{}, V:{}'.format(lookahead, ref_speed))
 
-            obs = env.make_observation() # [img, [L1, y_L1, eps_L1, K_L1], [L2, y_L2, eps_L2, K_L2], ..., [L8, y_L8, eps_L8, K_L8], vx, vy, yaw_rate, steer, throttle, brake]
-            img = np.array([obs[0] / 255.0])
-            vx = obs[-6]
-            vy = obs[-5]
-            psi_dot = obs[-4]
+            obs = env.make_observation()
+            img = np.array([obs['img'] / 255.0])
+            vx = obs['vx']
+            vy = obs['vy']
+            psi_dot = obs['yaw_rate']
             
+            # CMDN prediction
             total_expectation, uncertainty = model.get_estimation(img)
             total_expectation = total_expectation.numpy()[0] # (M,)
             uncertainty = uncertainty.numpy()[0] # (M, M)
 
-            for i in range(len(lookahead_list)):
-                e_pred['y'+str(lookahead_list[i])] = total_expectation[i]
-                e_pred['eps'+str(lookahead_list[i])] = total_expectation[i+len(lookahead_list)]
-                e_pred['y'+str(lookahead_list[i])+'_unc'] = uncertainty[i, i]
-                e_pred['eps'+str(lookahead_list[i])+'_unc'] = uncertainty[i+len(lookahead_list), i+len(lookahead_list)]
-            
-            # modulator = np.clip(-5.0 * y8_unc + 1.0, 0.5, 1.0)
-            # pid_controller.setpoint = ref_speed * modulator
-            # lookahead = ref_speed * modulator * 0.4
+            for i, L in enumerate(lookahead_list):
+                pred['y'+str(L)] = total_expectation[i]
+                pred['eps'+str(L)] = total_expectation[i+len(lookahead_list)]
+                pred['y'+str(L)+'_unc'] = uncertainty[i, i]
+                pred['eps'+str(L)+'_unc'] = uncertainty[i+len(lookahead_list), i+len(lookahead_list)]
 
-            if 0 <= lookahead < 1.0:
-                yL_pred = e_pred['y0']
-                yL_unc = e_pred['y0_unc']
-                epsL_pred = e_pred['eps0']
-                epsL_unc = e_pred['eps0_unc']
-            if 1.0 <= lookahead < 3.0:
-                yL_pred = e_pred['y2']
-                yL_unc = e_pred['y2_unc']
-                epsL_pred = e_pred['eps2']
-                epsL_unc = e_pred['eps2_unc']
-            if 3.0 <= lookahead < 5.0:
-                yL_pred = e_pred['y4']
-                yL_unc = e_pred['y4_unc']
-                epsL_pred = e_pred['eps4']
-                epsL_unc = e_pred['eps4_unc']
-            if 5.0 <= lookahead < 7.0:
-                yL_pred = e_pred['y6']
-                yL_unc = e_pred['y6_unc']
-                epsL_pred = e_pred['eps6']
-                epsL_unc = e_pred['eps6_unc']
-            if 7.0 <= lookahead < 9.0:
-                yL_pred = e_pred['y8']
-                yL_unc = e_pred['y8_unc']
-                epsL_pred = e_pred['eps8']
-                epsL_unc = e_pred['eps8_unc']
-            
-            # CMDN prediction
-            x_pred = np.array([[vy], [psi_dot], [yL_pred], [epsL_pred]])
-            x_pred_matlab = matlab.double([vy, psi_dot, yL_pred, epsL_pred])
-
-            # Kalman filter
-            # x_pred_kf, P_kf = kalman(yL_pred, epsL_pred, yL_unc, epsL_unc, ref_speed, lookahead, x_pred_kf, u, P_kf)
-            # yL_pred_kf = x_pred_kf[2][0]
-            # epsL_pred_kf = x_pred_kf[3][0]
-
-            # Low pass filter
-            # yL_pred_lpf = lowpass(tau=lpf_tau, ts=sampling_time, pre_y=yL_pred_lpf, x=yL_pred)
-            # epsL_pred_lpf = lowpass(tau=lpf_tau, ts=sampling_time, pre_y=epsL_pred_lpf, x=epsL_pred)
-            # x_pred_lpf = np.array([[vy],
-            #                        [psi_dot],
-            #                        [yL_pred_lpf],
-            #                        [epsL_pred_lpf]])
+                del unc_list['y'+str(L)][0]
+                unc_list['y'+str(L)].append(uncertainty[i, i])
+                avg_unc['y'+str(L)] = np.mean(unc_list['y'+str(L)])
+                del unc_list['eps'+str(L)][0]
+                unc_list['eps'+str(L)].append(uncertainty[i+len(lookahead_list), i+len(lookahead_list)])
+                avg_unc['eps'+str(L)] = np.mean(unc_list['eps'+str(L)])
 
             # Ground truth
-            e_obs = obs[2:7] + [obs[8]] + [obs[10]]
+            for i, L in enumerate(lookahead_list):
+                true['y'+str(L)] = obs['L'+str(L)][1]
+                true['eps'+str(L)] = obs['L'+str(L)][2]
 
-            for i in range(len(lookahead_list)):
-                e_true['y'+str(lookahead_list[i])] = e_obs[i][1]
-                e_true['eps'+str(lookahead_list[i])] = e_obs[i][2]
+            # Choose schduling parameters from uncertainty
+            if constant_speed == False:
+                lookahead = 4
+                ref_speed = 10
+                while avg_unc['y'+str(lookahead)] < 0.01:
+                    lookahead += 2
+                    ref_speed += 5
+                    if lookahead == 8:
+                        break
+                pid_controller.setpoint = ref_speed
 
-            yL_true = e_true['y'+str(lookahead)]
-            epsL_true = e_true['eps'+str(lookahead)]
-           
+            # State from prediction
+            yL_pred = pred['y'+str(lookahead)]
+            yL_unc = pred['y'+str(lookahead)+'_unc']
+            epsL_pred = pred['eps'+str(lookahead)]
+            epsL_unc = pred['eps'+str(lookahead)+'_unc']
+            
+            x_pred = np.array([[vy], [psi_dot], [yL_pred], [epsL_pred]])
+            x_pred_matlab = matlab.double([vy, psi_dot, yL_pred, epsL_pred])
+            
+            # State from ground truth
+            yL_true = true['y'+str(lookahead)]
+            epsL_true = true['eps'+str(lookahead)]
+
             x_true = np.array([[vy],
                                [psi_dot],
                                [yL_true],
@@ -220,47 +233,126 @@ def main():
             x_true_matlab = matlab.double([vy, psi_dot, yL_true, epsL_true])
 
             # For plotting
-            # gt.append(yL_true)
-            # pred.append(yL_pred)
-            # pred_kf.append(yL_pred_kf)
-            # pred_lpf.append(yL_pred_lpf)
-            # y0_plot.append(obs[1][1])
-            # timestamp += 0.05
-            # time_plot.append(timestamp)
+            for L in lookahead_list:
+                plot_value['y'+str(L)+'_pred'].append(pred['y'+str(L)])
+                plot_value['eps'+str(L)+'_pred'].append(pred['eps'+str(L)])
+                plot_value['y'+str(L)+'_true'].append(obs['L'+str(L)][1])
+                plot_value['eps'+str(L)+'_true'].append(obs['L'+str(L)][2])
+                plot_value['K'+str(L)+'_true'].append(obs['L'+str(L)][3])
+                plot_value['unc_y'+str(L)].append(pred['y'+str(L)+'_unc'])
+                plot_value['unc_eps'+str(L)].append(pred['eps'+str(L)+'_unc'])
+                plot_value['avg_unc_y'+str(L)].append(np.mean(unc_list['y'+str(L)]))
+                plot_value['avg_unc_eps'+str(L)].append(np.mean(unc_list['eps'+str(L)]))
+        
+            plot_value['y0_true'].append(obs['L0'][1])
+            plot_value['eps0_true'].append(obs['L0'][2])
+            plot_value['lookahead'].append(lookahead)
+            plot_value['speed'].append(vx)
+            timestamp += sampling_time
+            frame += 1
+            plot_value['timestamp'].append(timestamp)
+            plot_value['distance'].append(obs['waypoint_s'])
+            plot_value['steer'].append(obs['steer'])
 
-            graphic.update_plot(yL_true, yL_pred, epsL_true, epsL_pred, e_pred['y10_unc'], e_pred['y20_unc'], e_pred['y30_unc'])
+            # if frame % 25 == 0:
+            #     imagename = os.path.join(image_path, '{}.png'.format(frame))
+            #     cv2.imwrite(imagename, env.current_top_image, [cv2.IMWRITE_PNG_COMPRESSION, 0])
+
+            # Graphical visualization
+            graphic.update_plot(obs['L0'][1], yL_pred, obs['L0'][2], epsL_pred, pred['y4_unc'], pred['y6_unc'], pred['y8_unc'], pred['y10_unc'])
 
             # Feedforward control
             # u_ff = K_10 * (l - ((l_f * c_f - l_r * c_r) * vx**2 * m) / (c_r * c_f * l))
             
-            # LQR state feedback control
-            # K = optimal_gain['V'+str(int(ref_speed))+'_L'+str(int(lookahead))]
-            # u = -np.matmul(K, x_true)[0]
-            # u = -np.matmul(K, x_pred)[0]
-            # u = -np.matmul(K, x_pred_lpf)[0]
-            
             # LPV control from Matlab
-            # u, xc_matlab = eng.cal_u_dynamic(float(ref_speed), x_pred_matlab, xc_matlab, nargout=2)
-            u, xc_matlab = eng.cal_u_dynamic(float(ref_speed), x_true_matlab, xc_matlab, nargout=2)
-            print(u, xc_matlab)
+            u, xc_matlab = eng.cal_u_dynamic(float(ref_speed), x_pred_matlab, xc_matlab, nargout=2)
+            # u, xc_matlab = eng.cal_u_dynamic(float(ref_speed), x_true_matlab, xc_matlab, nargout=2)
 
-            throttle = pid_controller(vx)
-            control = carla.VehicleControl(throttle=throttle, steer=-u)
+            accel = pid_controller(vx)
+            if accel < 0.0:
+                throttle = 0.0
+                brake = abs(accel)
+            else:
+                throttle = accel
+                brake = 0.0
+
+            control = carla.VehicleControl(throttle=throttle, brake=brake, steer=-u)
             env.ego_vehicle_actor.apply_control(control)
-            
-            if timestamp > 50.0:
+
+            if obs['waypoint_s'] > 100.00 and ckpt_100 == False:
+                ckpt_100 = True
+                for t in range(10):
+                    print('Change fog settings in {} sec'.format(t))
+                    time.sleep(1)
+            if obs['waypoint_s'] > 200.00 and ckpt_200 == False:
+                ckpt_200 = True
+                for t in range(10):
+                    print('Change fog settings in {} sec'.format(t))
+                    time.sleep(1)
+            if obs['waypoint_s'] > 300.00 and ckpt_300 == False:
+                ckpt_300 = True
+                for t in range(10):
+                    print('Change fog settings in {} sec'.format(t))
+                    time.sleep(1)
+            if obs['waypoint_s'] > 400.00 and ckpt_400 == False:
+                ckpt_400 = True
+                for t in range(10):
+                    print('Change fog settings in {} sec'.format(t))
+                    time.sleep(1)
+            if obs['waypoint_s'] > 500.00 and ckpt_500 == False:
+                ckpt_500 = True
+                for t in range(10):
+                    print('Change fog settings in {} sec'.format(t))
+                    time.sleep(1)
+            if obs['waypoint_s'] > 600.00 and ckpt_600 == False:
+                ckpt_600 = True
+                for t in range(10):
+                    print('Change fog settings in {} sec'.format(t))
+                    time.sleep(1)
+            if obs['waypoint_s'] > 670.00 or abs(obs['L0'][1]) > 1.9:
                 break
 
     finally:
+        env.client.stop_recorder()
         settings.synchronous_mode = False
         env.world.apply_settings(settings)
-        # np.savez('y0_plot_v'+str(ref_speed)+'dark', y0=np.array(y0_plot), time=np.array(time_plot))
-        # plt.plot(gt, 'b', label='ground truth')
-        # plt.plot(pred, 'r', label='prediction')
-        # plt.plot(pred_kf, 'g', label='kalman filter')
-        # plt.plot(pred_lpf, 'k', label='low pass filter')
-        plt.legend()
-        plt.show()
+
+        # np.savez('plot_data/v'+str(ref_speed)+'.npz', y0_true=plot_value['y0_true'],
+        np.savez('plot_data/15mps.npz',  y0_true=plot_value['y0_true'],
+                                        eps0_true=plot_value['eps0_true'],
+                                        y4_true=plot_value['y4_true'],
+                                        eps4_true=plot_value['eps4_true'],
+                                        K4_true=plot_value['K4_true'],
+                                        y6_true=plot_value['y6_true'],
+                                        eps6_true=plot_value['eps6_true'],
+                                        K6_true=plot_value['K6_true'],
+                                        y8_true=plot_value['y8_true'],
+                                        eps8_true=plot_value['eps8_true'],
+                                        K8_true=plot_value['K8_true'],
+                                        y10_true=plot_value['y10_true'],
+                                        eps10_true=plot_value['eps10_true'],
+                                        K10_true=plot_value['K10_true'],
+                                        unc_y4=plot_value['unc_y4'],
+                                        unc_y6=plot_value['unc_y6'],
+                                        unc_y8=plot_value['unc_y8'],
+                                        unc_y10=plot_value['unc_y10'],
+                                        unc_eps4=plot_value['unc_eps4'],
+                                        unc_eps6=plot_value['unc_eps6'],
+                                        unc_eps8=plot_value['unc_eps8'],
+                                        unc_eps10=plot_value['unc_eps10'],
+                                        avg_unc_y4=plot_value['avg_unc_y4'],
+                                        avg_unc_y6=plot_value['avg_unc_y6'],
+                                        avg_unc_y8=plot_value['avg_unc_y8'],
+                                        avg_unc_y10=plot_value['avg_unc_y10'],
+                                        avg_unc_eps4=plot_value['avg_unc_eps4'],
+                                        avg_unc_eps6=plot_value['avg_unc_eps6'],
+                                        avg_unc_eps8=plot_value['avg_unc_eps8'],
+                                        avg_unc_eps10=plot_value['avg_unc_eps10'],
+                                        lookahead=plot_value['lookahead'],
+                                        speed=plot_value['speed'],
+                                        steer=plot_value['steer'],
+                                        distance=plot_value['distance'],
+                                        timestamp=plot_value['timestamp'])
 
 if __name__ == '__main__':
     try:

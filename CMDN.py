@@ -14,7 +14,7 @@ from tensorflow.keras.callbacks import TensorBoard
 import keras.backend as K
 
 # n_out = (1 + 2*M) * KMIX
-n_batch = 64
+n_batch = 32
 n_epochs = 200
 lr = 1e-4
 

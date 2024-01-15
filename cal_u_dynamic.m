@@ -42,8 +42,6 @@ function [u,xc] = cal_u_dynamic(Vx,x,xc)
     Ac = inv(V) * (Q - Y * A * X - Y * Bu * L - F * Cy * X)*inv(U);
     Bc = inv(V) * F;
     Cc = L * inv(U);
-    disp(Ac);
-    disp(Bc);
     u = Cc * xc;
     xc = Ac * xc + Bc * x;    
 end
